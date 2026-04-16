@@ -1,0 +1,99 @@
+package gui;
+
+import pieces.*;
+import utils.Position;
+
+import java.io.Serializable;
+
+/**
+ * A snapshot of the board state used for undo and save/load implementation
+ * Stores all piece positions and colors so the board can be remade when needed
+ */
+
+
+public class GameState implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** Serialized piece data [row][col] = {type, color} or null */
+    private String[][] pieceTypes;
+    private String[][] pieceColors;
+
+    /** Whose turn it is */
+    private String currentTurn;
+
+    /** Captured piece data */
+    private String[] capturedTypes;
+    private String[] capturedColors;
+
+    /**
+     * Captures the current board state
+     * @param board      The board to snapshot
+     * @param currentTurn Whose turn it is
+     */
+    
+    public GameState(board.Board board, String currentTurn) {
+        this.currentTurn = currentTurn;
+        pieceTypes = new String[8][8];
+        pieceColors = new String[8][8];
+
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                Piece p = board.getPiece(new Position(r, c));
+                if (p != null) {
+                    pieceTypes[r][c] = p.getClass().getSimpleName();
+                    pieceColors[r][c] = p.getColor();
+                }
+            }
+        }
+
+        java.util.List<Piece> captured = board.getCapturedPieces();
+        capturedTypes = new String[captured.size()];
+        capturedColors = new String[captured.size()];
+        for (int i = 0; i < captured.size(); i++) {
+            capturedTypes[i] = captured.get(i).getClass().getSimpleName();
+            capturedColors[i] = captured.get(i).getColor();
+        }
+    }
+
+    /**
+     * Reconstructs a Board from this snapshot
+     * @return A new Board matching the save
+     */
+    
+    public board.Board restoreBoard() {
+        board.Board b = new board.Board();
+        for (int r = 0; r < 8; r++) {
+            for (int c = 0; c < 8; c++) {
+                if (pieceTypes[r][c] != null) {
+                    Piece p = createPiece(pieceTypes[r][c], pieceColors[r][c], new Position(r, c));
+                    b.setPiece(new Position(r, c), p);
+                }
+            }
+        }
+        for (int i = 0; i < capturedTypes.length; i++) {
+            Piece p = createPiece(capturedTypes[i], capturedColors[i], new Position(0, 0));
+            b.getCapturedPieces().add(p);
+        }
+        return b;
+    }
+
+    /**
+     * Factory method to create a piece by class name
+     */
+    
+    private Piece createPiece(String type, String color, Position pos) {
+        switch (type) {
+            case "King":   return new King(color, pos);
+            case "Queen":  return new Queen(color, pos);
+            case "Rook":   return new Rook(color, pos);
+            case "Bishop": return new Bishop(color, pos);
+            case "Knight": return new Knight(color, pos);
+            case "Pawn":   return new Pawn(color, pos);
+            default: return null;
+        }
+    }
+
+    /** @return Whose turn it was when the state was saved */
+    public String getCurrentTurn() { return currentTurn; }
+}

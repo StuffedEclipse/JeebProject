@@ -1,0 +1,495 @@
+package gui;
+
+import board.Board;
+import pieces.*;
+import utils.Position;
+
+import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.*;
+import java.util.*;
+
+/**
+ * Main GUI window for the chess game
+ * Contains implementation for the 3 base GUI Features
+ */
+
+public class ChessGUI extends JFrame {
+
+    /** The board model */
+    private Board board;
+
+    /** The board rendering panel */
+    private ChessBoardPanel boardPanel;
+
+    /** The history/undo side panel */
+    private HistoryPanel historyPanel;
+
+    /** Whose turn it currently is */
+    private String currentTurn = "white";
+
+    /** Whether the game is over or not */
+    private boolean gameOver = false;
+
+    /** Stack of board states for undo */
+    private Deque<GameState> undoStack = new ArrayDeque<>();
+
+    /** Stack of history entries for undo */
+    private Deque<String[]> historyEntryStack = new ArrayDeque<>();
+
+    /** Status bar label */
+    private JLabel statusLabel;
+
+    /** Turn indicator label */
+    private JLabel turnLabel;
+
+    /**
+     * Builds the main chess GUI window with all panels and menus
+     */
+
+    public ChessGUI() {
+        super("Chess");
+        board = new Board();
+        board.initialize();
+
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(new Color(30, 30, 30));
+
+        buildMenuBar();
+        buildBoardAndSidePanels();
+        buildStatusBar();
+
+        pack();
+        setLocationRelativeTo(null);
+        setResizable(false);
+        setVisible(true);
+
+        updateStatus();
+    }
+
+    /**
+     * Constructs the menu bar with Game and Settings menus
+     * Implementation for the Menu Bar
+     */
+
+    private void buildMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        menuBar.setBackground(new Color(50, 50, 50));
+        menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(80, 80, 80)));
+
+        // Game menu
+        JMenu gameMenu = styledMenu("Game");
+        JMenuItem newGame = styledMenuItem("New Game", "Ctrl+N");
+        JMenuItem saveGame = styledMenuItem("Save Game", "Ctrl+S");
+        JMenuItem loadGame = styledMenuItem("Load Game", "Ctrl+O");
+        JMenuItem separator = null;
+        JMenuItem exitItem = styledMenuItem("Exit", null);
+
+        newGame.addActionListener(e -> newGame());
+        saveGame.addActionListener(e -> saveGame());
+        loadGame.addActionListener(e -> loadGame());
+        exitItem.addActionListener(e -> System.exit(0));
+
+        newGame.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, InputEvent.CTRL_DOWN_MASK));
+        saveGame.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK));
+        loadGame.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, InputEvent.CTRL_DOWN_MASK));
+
+        gameMenu.add(newGame);
+        gameMenu.add(saveGame);
+        gameMenu.add(loadGame);
+        gameMenu.addSeparator();
+        gameMenu.add(exitItem);
+
+        // Settings menu, including board customization
+        JMenu settingsMenu = styledMenu("Settings");
+        JMenuItem boardColors = styledMenuItem("Board Colors", null);
+        JMenuItem boardSize = styledMenuItem("Board Size", null);
+        boardColors.addActionListener(e -> openColorSettings());
+        boardSize.addActionListener(e -> openSizeSettings());
+        settingsMenu.add(boardColors);
+        settingsMenu.add(boardSize);
+
+        menuBar.add(gameMenu);
+        menuBar.add(settingsMenu);
+        setJMenuBar(menuBar);
+    }
+
+    /**
+     * Builds the center board panel and right-side history panel
+     */
+
+    private void buildBoardAndSidePanels() {
+        boardPanel = new ChessBoardPanel(board, this);
+
+        historyPanel = new HistoryPanel();
+        historyPanel.getUndoButton().addActionListener(e -> undoMove());
+
+        JPanel boardWrapper = new JPanel(new GridBagLayout());
+        boardWrapper.setBackground(new Color(30, 30, 30));
+        boardWrapper.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(16, 16, 16, 8),
+                BorderFactory.createLineBorder(new Color(80, 60, 30), 2)
+        ));
+        boardWrapper.add(boardPanel);
+
+        add(boardWrapper, BorderLayout.CENTER);
+        add(historyPanel, BorderLayout.EAST);
+    }
+
+    /**
+     * Builds the bottom status bar showing whose turn it is and game messages
+     */
+
+    private void buildStatusBar() {
+        JPanel statusBar = new JPanel(new BorderLayout());
+        statusBar.setBackground(new Color(35, 35, 35));
+        statusBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(70, 70, 70)),
+                BorderFactory.createEmptyBorder(6, 14, 6, 14)
+        ));
+
+        turnLabel = new JLabel("⬜ WHITE'S TURN");
+        turnLabel.setForeground(new Color(220, 220, 220));
+        turnLabel.setFont(new Font("Georgia", Font.BOLD, 13));
+
+        statusLabel = new JLabel("Game in progress");
+        statusLabel.setForeground(new Color(150, 150, 150));
+        statusLabel.setFont(new Font("Georgia", Font.ITALIC, 12));
+
+        statusBar.add(turnLabel, BorderLayout.WEST);
+        statusBar.add(statusLabel, BorderLayout.EAST);
+        add(statusBar, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Attempts to move a piece from one position to another
+     * Validates the move, updates the board and history, and checks for game-end conditions
+     * @param from Starting position
+     * @param to   Ending position
+     */
+
+    public void attemptMove(Position from, Position to) {
+        if (gameOver) return;
+
+        Piece moving = board.getPiece(from);
+        if (moving == null || !moving.getColor().equals(currentTurn)) return;
+
+        if (!board.isLegalMove(from, to, currentTurn)) {
+            statusLabel.setText("Illegal move");
+            boardPanel.clearSelection();
+            return;
+        }
+
+        // Save state for undo before making the move
+        undoStack.push(new GameState(board, currentTurn));
+
+        Piece captured = board.getPiece(to);
+        boolean isCapture = captured != null;
+
+        // Check if capturing the king
+        boolean kingCaptured = captured instanceof King;
+
+        board.movePiece(from, to);
+
+        // Record in game history
+        String symbol = getUnicodeSymbol(moving);
+        historyPanel.addMove(currentTurn, from.toNotation(), to.toNotation(), symbol, isCapture);
+        historyPanel.updateCaptured(board.getCapturedPieces());
+
+        if (kingCaptured) {
+            boardPanel.repaint();
+            String winner = currentTurn.substring(0, 1).toUpperCase() + currentTurn.substring(1);
+            JOptionPane.showMessageDialog(this,
+                    winner + " captures the King!\n" + winner + " WINS!",
+                    "Game Over",
+                    JOptionPane.INFORMATION_MESSAGE);
+            gameOver = true;
+            statusLabel.setText(winner + " wins!");
+            turnLabel.setText("GAME OVER");
+            return;
+        }
+
+        String opponent = currentTurn.equals("white") ? "black" : "white";
+
+        if (board.isCheckmate(opponent)) {
+            boardPanel.repaint();
+            String winner = currentTurn.substring(0, 1).toUpperCase() + currentTurn.substring(1);
+            JOptionPane.showMessageDialog(this,
+                    "CHECKMATE! " + winner + " wins!",
+                    "Game Over",
+                    JOptionPane.INFORMATION_MESSAGE);
+            gameOver = true;
+            statusLabel.setText("Checkmate! " + winner + " wins!");
+            turnLabel.setText("GAME OVER");
+        } else if (board.isStalemate(opponent)) {
+            boardPanel.repaint();
+            JOptionPane.showMessageDialog(this,
+                    "STALEMATE! The game is a draw",
+                    "Game Over",
+                    JOptionPane.INFORMATION_MESSAGE);
+            gameOver = true;
+            statusLabel.setText("Stalemate — draw!");
+            turnLabel.setText("GAME OVER");
+        } else {
+            currentTurn = opponent;
+            updateStatus();
+        }
+
+        boardPanel.repaint();
+    }
+
+    /**
+     * Undoes the last move by restoring the previous board state
+     * Implementation for the Undo button part of Feature 3
+     */
+
+    private void undoMove() {
+        if (undoStack.isEmpty()) {
+            statusLabel.setText("Nothing to undo");
+            return;
+        }
+
+        GameState prev = undoStack.pop();
+        board = prev.restoreBoard();
+        currentTurn = prev.getCurrentTurn();
+        gameOver = false;
+
+        boardPanel.setBoard(board);
+        boardPanel.clearSelection();
+        historyPanel.removeLastMove();
+        historyPanel.updateCaptured(board.getCapturedPieces());
+        updateStatus();
+    }
+
+    /**
+     * Starts a new game by resetting the board, turn, history, and undo stack
+     */
+
+    private void newGame() {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Start a new game? Current progress will be lost",
+                "New Game", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        board = new Board();
+        board.initialize();
+        currentTurn = "white";
+        gameOver = false;
+        undoStack.clear();
+
+        boardPanel.setBoard(board);
+        boardPanel.clearSelection();
+        historyPanel.clear();
+        updateStatus();
+    }
+
+    /**
+     * Saves the current game state to a file using Java serialization.
+     * Implementation for Feature 1's game saving
+     */
+
+    private void saveGame() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Save Game");
+        chooser.setFileFilter(new FileNameExtensionFilter("Chess Save Files (*.chess)", "chess"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+
+        File file = chooser.getSelectedFile();
+        if (!file.getName().endsWith(".chess")) {
+            file = new File(file.getAbsolutePath() + ".chess");
+        }
+
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
+            GameState state = new GameState(board, currentTurn);
+            oos.writeObject(state);
+            statusLabel.setText("Game saved to " + file.getName());
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Failed to save game: " + e.getMessage(),
+                    "Save Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Loads a previously saved game from a file
+     * Implementation for Feature 1's game loading
+     */
+
+    private void loadGame() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Load Game");
+        chooser.setFileFilter(new FileNameExtensionFilter("Chess Save Files (*.chess)", "chess"));
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(chooser.getSelectedFile()))) {
+            GameState state = (GameState) ois.readObject();
+            board = state.restoreBoard();
+            currentTurn = state.getCurrentTurn();
+            gameOver = false;
+            undoStack.clear();
+
+            boardPanel.setBoard(board);
+            boardPanel.clearSelection();
+            historyPanel.clear();
+            historyPanel.updateCaptured(board.getCapturedPieces());
+            updateStatus();
+            statusLabel.setText("Game loaded.");
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Failed to load game: " + e.getMessage(),
+                    "Load Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Opens a dialog to customize board square colors
+     * Implementation for Feature 2's board color changing
+     */
+
+    private void openColorSettings() {
+        JDialog dialog = new JDialog(this, "Board Colors", true);
+        dialog.setLayout(new GridLayout(4, 1, 8, 8));
+        dialog.getContentPane().setBackground(new Color(50, 50, 50));
+        ((JPanel)dialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+
+        JLabel title = new JLabel("Choose Board Colors");
+        title.setForeground(Color.WHITE);
+        title.setFont(new Font("Georgia", Font.BOLD, 13));
+
+        final Color[] lightChoice = {new Color(240, 217, 181)};
+        final Color[] darkChoice = {new Color(181, 136, 99)};
+
+        JButton lightBtn = new JButton("Light Square Color");
+        styleDialogButton(lightBtn);
+        lightBtn.addActionListener(e -> {
+            Color c = JColorChooser.showDialog(dialog, "Choose Light Square Color", lightChoice[0]);
+            if (c != null) { lightChoice[0] = c; lightBtn.setBackground(c); }
+        });
+
+        JButton darkBtn = new JButton("Dark Square Color");
+        styleDialogButton(darkBtn);
+        darkBtn.addActionListener(e -> {
+            Color c = JColorChooser.showDialog(dialog, "Choose Dark Square Color", darkChoice[0]);
+            if (c != null) { darkChoice[0] = c; darkBtn.setBackground(c); }
+        });
+
+        JButton applyBtn = new JButton("Apply");
+        styleDialogButton(applyBtn);
+        applyBtn.setBackground(new Color(80, 120, 80));
+        applyBtn.addActionListener(e -> {
+            boardPanel.setLightColor(lightChoice[0]);
+            boardPanel.setDarkColor(darkChoice[0]);
+            dialog.dispose();
+        });
+
+        dialog.add(title);
+        dialog.add(lightBtn);
+        dialog.add(darkBtn);
+        dialog.add(applyBtn);
+        dialog.setSize(280, 220);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    /**
+     * Opens a dialog to change the board size (small/medium/large)
+     * Implementation for Feature 2's board size changing
+     */
+
+    private void openSizeSettings() {
+        String[] options = {"Small (60px)", "Medium (80px)", "Large (100px)"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Select board square size:",
+                "Board Size",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null, options, options[1]);
+
+        int[] sizes = {60, 80, 100};
+        if (choice >= 0) {
+            boardPanel.setSquareSize(sizes[choice]);
+            pack();
+        }
+    }
+
+    /**
+     * Applies consistent dark styling to a dialog button
+     */
+
+    private void styleDialogButton(JButton btn) {
+        btn.setBackground(new Color(70, 70, 70));
+        btn.setForeground(Color.WHITE);
+        btn.setFont(new Font("Georgia", Font.PLAIN, 12));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+    }
+
+    /**
+     * Helper to create a styled JMenu
+     */
+
+    private JMenu styledMenu(String text) {
+        JMenu menu = new JMenu(text);
+        menu.setForeground(new Color(200, 200, 200));
+        menu.setFont(new Font("Georgia", Font.PLAIN, 13));
+        menu.getPopupMenu().setBackground(new Color(50, 50, 50));
+        return menu;
+    }
+
+    /**
+     * Helper to create a styled JMenuItem
+     */
+
+    private JMenuItem styledMenuItem(String text, String shortcut) {
+        JMenuItem item = new JMenuItem(text);
+        item.setForeground(new Color(210, 210, 210));
+        item.setBackground(new Color(50, 50, 50));
+        item.setFont(new Font("Georgia", Font.PLAIN, 12));
+        return item;
+    }
+
+    /**
+     * Updates the turn label and status bar to reflect the current game state
+     */
+
+    private void updateStatus() {
+        if (currentTurn.equals("white")) {
+            turnLabel.setText("⬜  WHITE'S TURN");
+            turnLabel.setForeground(new Color(230, 230, 230));
+        } else {
+            turnLabel.setText("⬛  BLACK'S TURN");
+            turnLabel.setForeground(new Color(180, 180, 180));
+        }
+
+        if (board.isCheck(currentTurn)) {
+            statusLabel.setText("⚠ " + currentTurn.toUpperCase() + " IS IN CHECK, YOU GOTTA DO SOMETHING");
+            statusLabel.setForeground(new Color(220, 80, 80));
+        } else {
+            statusLabel.setText("Game in progress");
+            statusLabel.setForeground(new Color(150, 150, 150));
+        }
+    }
+
+    /**
+     * Returns the current player's turn color
+     * @return "white"/"black"
+     */
+
+    public String getCurrentTurn() { return currentTurn; }
+
+    /**
+     * Gets the Unicode symbol for a piece
+     */
+
+    private String getUnicodeSymbol(Piece piece) {
+        boolean white = piece.getColor().equals("white");
+        if (piece instanceof King)   return white ? "♔" : "♚";
+        if (piece instanceof Queen)  return white ? "♕" : "♛";
+        if (piece instanceof Rook)   return white ? "♖" : "♜";
+        if (piece instanceof Bishop) return white ? "♗" : "♝";
+        if (piece instanceof Knight) return white ? "♘" : "♞";
+        if (piece instanceof Pawn)   return white ? "♙" : "♟";
+        return "?";
+    }
+}

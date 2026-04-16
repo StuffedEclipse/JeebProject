@@ -1,0 +1,243 @@
+package gui;
+
+import pieces.*;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.util.List;
+
+/**
+ * Side panel showing move history, captured pieces, and an undo button
+ * Contains implementation of the match history and undo button Features
+ */
+
+public class HistoryPanel extends JPanel {
+
+    /** List model backing the move history display */
+    
+    private DefaultListModel<String> moveListModel;
+
+    /** Scrollable list of moves */
+    
+    private JList<String> moveList;
+
+    /** Label showing white's captured pieces */
+    
+    private JLabel whiteCapturedLabel;
+
+    /** Label showing black's captured pieces */
+    
+    private JLabel blackCapturedLabel;
+
+    /** Undo button */
+    
+    private JButton undoButton;
+
+    /** Move counter for display */
+    
+    private int moveNumber = 1;
+
+    /** Track whose turn last moved for numbering */
+    
+    private boolean whiteMoved = false;
+
+    /**
+     * Builds the history panel with the move list, captured pieces, and undo button
+     */
+    
+    public HistoryPanel() {
+        setLayout(new BorderLayout(0, 8));
+        setBackground(new Color(40, 40, 40));
+        setBorder(new EmptyBorder(12, 10, 12, 10));
+        setPreferredSize(new Dimension(220, 0));
+
+        // Top= Title
+        JLabel title = new JLabel("GAME HISTORY");
+        title.setForeground(new Color(200, 160, 80));
+        title.setFont(new Font("Georgia", Font.BOLD, 13));
+        title.setBorder(new EmptyBorder(0, 0, 8, 0));
+        add(title, BorderLayout.NORTH);
+
+        // Middle= The move list & the captured pieces
+        JPanel centerPanel = new JPanel();
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+        centerPanel.setBackground(new Color(40, 40, 40));
+
+        // All move history
+        JLabel movesLabel = new JLabel("Moves");
+        movesLabel.setForeground(new Color(160, 160, 160));
+        movesLabel.setFont(new Font("Georgia", Font.ITALIC, 11));
+        movesLabel.setBorder(new EmptyBorder(0, 0, 4, 0));
+        centerPanel.add(movesLabel);
+
+        moveListModel = new DefaultListModel<>();
+        moveList = new JList<>(moveListModel);
+        moveList.setBackground(new Color(55, 55, 55));
+        moveList.setForeground(new Color(230, 230, 230));
+        moveList.setFont(new Font("Courier New", Font.PLAIN, 12));
+        moveList.setSelectionBackground(new Color(80, 80, 80));
+        moveList.setBorder(new EmptyBorder(4, 6, 4, 6));
+        moveList.setFixedCellHeight(20);
+
+        JScrollPane scrollPane = new JScrollPane(moveList);
+        scrollPane.setPreferredSize(new Dimension(200, 300));
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 300));
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(80, 80, 80)));
+        scrollPane.getVerticalScrollBar().setBackground(new Color(55, 55, 55));
+        centerPanel.add(scrollPane);
+
+        centerPanel.add(Box.createVerticalStrut(12));
+
+        // Section for all captured pieces
+        JLabel capturedTitle = new JLabel("Captured Pieces");
+        capturedTitle.setForeground(new Color(160, 160, 160));
+        capturedTitle.setFont(new Font("Georgia", Font.ITALIC, 11));
+        capturedTitle.setBorder(new EmptyBorder(0, 0, 4, 0));
+        centerPanel.add(capturedTitle);
+
+        JPanel capturedPanel = new JPanel();
+        capturedPanel.setLayout(new BoxLayout(capturedPanel, BoxLayout.Y_AXIS));
+        capturedPanel.setBackground(new Color(55, 55, 55));
+        capturedPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(80, 80, 80)),
+                new EmptyBorder(6, 8, 6, 8)
+        ));
+
+        whiteCapturedLabel = makeCapLabel("⬜ White took: —");
+        blackCapturedLabel = makeCapLabel("⬛ Black took: —");
+        capturedPanel.add(whiteCapturedLabel);
+        capturedPanel.add(Box.createVerticalStrut(4));
+        capturedPanel.add(blackCapturedLabel);
+        capturedPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        centerPanel.add(capturedPanel);
+
+        add(centerPanel, BorderLayout.CENTER);
+
+        // Bottom= Undo button
+        undoButton = new JButton("↩  Undo Move");
+        undoButton.setFont(new Font("Georgia", Font.BOLD, 13));
+        undoButton.setBackground(new Color(100, 70, 40));
+        undoButton.setForeground(Color.WHITE);
+        undoButton.setFocusPainted(false);
+        undoButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(160, 110, 60), 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        undoButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        undoButton.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                undoButton.setBackground(new Color(130, 90, 50));
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                undoButton.setBackground(new Color(100, 70, 40));
+            }
+        });
+        add(undoButton, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Helper to build a styled captured pieces label
+     */
+    
+    private JLabel makeCapLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(210, 210, 210));
+        label.setFont(new Font("Segoe UI Symbol", Font.PLAIN, 11));
+        return label;
+    }
+
+    /**
+     * Adds a move to the history
+     * @param color  The team that moved ("white"/"black")
+     * @param from   Starting position notation
+     * @param to     Ending position notation
+     * @param symbol The piece symbol
+     * @param captured Whether a piece was captured
+     */
+    
+    public void addMove(String color, String from, String to, String symbol, boolean captured) {
+        String captureStr = captured ? "x" : "-";
+        String entry;
+        if (color.equals("white")) {
+            entry = moveNumber + ". " + symbol + " " + from + captureStr + to;
+            whiteMoved = true;
+        } else {
+            entry = "   " + symbol + " " + from + captureStr + to;
+            if (whiteMoved) moveNumber++;
+            whiteMoved = false;
+        }
+        moveListModel.addElement(entry);
+        moveList.ensureIndexIsVisible(moveListModel.size() - 1);
+    }
+
+    /**
+     * Removes the last move entry from history
+     */
+    
+    public void removeLastMove() {
+        if (!moveListModel.isEmpty()) {
+            String last = moveListModel.get(moveListModel.size() - 1);
+            moveListModel.remove(moveListModel.size() - 1);
+            // If the removed entry started with a number, it was white's move
+            if (!last.startsWith("   ") && moveNumber > 1) {
+                moveNumber--;
+            }
+        }
+    }
+
+    /**
+     * Updates the captured pieces display from the board's captured list
+     * @param capturedPieces Full list of the captured pieces
+     */
+    
+    public void updateCaptured(List<pieces.Piece> capturedPieces) {
+        StringBuilder whiteTook = new StringBuilder();
+        StringBuilder blackTook = new StringBuilder();
+
+        for (pieces.Piece p : capturedPieces) {
+            String sym = getUnicode(p);
+            if (p.getColor().equals("black")) {
+                whiteTook.append(sym);
+            } else {
+                blackTook.append(sym);
+            }
+        }
+
+        whiteCapturedLabel.setText("⬜ " + (whiteTook.length() == 0 ? "—" : whiteTook.toString()));
+        blackCapturedLabel.setText("⬛ " + (blackTook.length() == 0 ? "—" : blackTook.toString()));
+    }
+
+    /**
+     * Gets the Unicode symbol for the given piece
+     */
+    
+    private String getUnicode(pieces.Piece p) {
+        if (p instanceof King)   return "♚";
+        if (p instanceof Queen)  return "♛";
+        if (p instanceof Rook)   return "♜";
+        if (p instanceof Bishop) return "♝";
+        if (p instanceof Knight) return "♞";
+        if (p instanceof Pawn)   return "♟";
+        return "?";
+    }
+
+    /**
+     * Clears all history entries and resets the move counter
+     */
+    
+    public void clear() {
+        moveListModel.clear();
+        moveNumber = 1;
+        whiteMoved = false;
+        whiteCapturedLabel.setText("⬜ White took: —");
+        blackCapturedLabel.setText("⬛ Black took: —");
+    }
+
+    /**
+     * Returns the undo button for attaching an action listener
+     * @return the undo JButton
+     */
+    
+    public JButton getUndoButton() { return undoButton; }
+}

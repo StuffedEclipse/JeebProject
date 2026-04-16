@@ -1,15 +1,19 @@
-import game.Game;
+import gui.ChessGUI;
+import javax.swing.SwingUtilities;
 
 /**
- * Creates a game of chess, runs it, and loops it until the game ends
+ * Second version of the chess game
+ * Launches the Swing GUI on the Event Dispatch Thread to start the game and its visuals
  */
+
+
 public class Main {
     /**
-     * Starts up the game
+     * Starts the new version of the chess game
+     * @param args Command line arguments
      */
+
     public static void main(String[] args) {
-        Game game = new Game();
-        game.start();
-        game.play();
+        SwingUtilities.invokeLater(() -> new ChessGUI());
     }
 }

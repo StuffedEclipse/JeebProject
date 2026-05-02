@@ -12,10 +12,9 @@ import java.io.*;
 import java.util.*;
 
 /**
- * Main GUI window for the chess game
- * Contains implementation for the 3 base GUI Features
+ * Main GUI window for the chess game.
+ * Contains implementation for the 3 base GUI features plus pawn promotion.
  */
-
 public class ChessGUI extends JFrame {
 
     /** The board model */
@@ -48,7 +47,6 @@ public class ChessGUI extends JFrame {
     /**
      * Builds the main chess GUI window with all panels and menus
      */
-
     public ChessGUI() {
         super("Chess");
         board = new Board();
@@ -72,23 +70,19 @@ public class ChessGUI extends JFrame {
 
     /**
      * Constructs the menu bar with Game and Settings menus
-     * Implementation for the Menu Bar
      */
-
     private void buildMenuBar() {
         JMenuBar menuBar = new JMenuBar();
         menuBar.setBackground(new Color(50, 50, 50));
         menuBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(80, 80, 80)));
 
-        // Game menu
         JMenu gameMenu = styledMenu("Game");
-        JMenuItem newGame = styledMenuItem("New Game", "Ctrl+N");
+        JMenuItem newGame  = styledMenuItem("New Game",  "Ctrl+N");
         JMenuItem saveGame = styledMenuItem("Save Game", "Ctrl+S");
         JMenuItem loadGame = styledMenuItem("Load Game", "Ctrl+O");
-        JMenuItem separator = null;
         JMenuItem exitItem = styledMenuItem("Exit", null);
 
-        newGame.addActionListener(e -> newGame());
+        newGame.addActionListener(e  -> newGame());
         saveGame.addActionListener(e -> saveGame());
         loadGame.addActionListener(e -> loadGame());
         exitItem.addActionListener(e -> System.exit(0));
@@ -103,12 +97,11 @@ public class ChessGUI extends JFrame {
         gameMenu.addSeparator();
         gameMenu.add(exitItem);
 
-        // Settings menu, including board customization
         JMenu settingsMenu = styledMenu("Settings");
         JMenuItem boardColors = styledMenuItem("Board Colors", null);
-        JMenuItem boardSize = styledMenuItem("Board Size", null);
+        JMenuItem boardSize   = styledMenuItem("Board Size",   null);
         boardColors.addActionListener(e -> openColorSettings());
-        boardSize.addActionListener(e -> openSizeSettings());
+        boardSize.addActionListener(e   -> openSizeSettings());
         settingsMenu.add(boardColors);
         settingsMenu.add(boardSize);
 
@@ -120,7 +113,6 @@ public class ChessGUI extends JFrame {
     /**
      * Builds the center board panel and right-side history panel
      */
-
     private void buildBoardAndSidePanels() {
         boardPanel = new ChessBoardPanel(board, this);
 
@@ -142,7 +134,6 @@ public class ChessGUI extends JFrame {
     /**
      * Builds the bottom status bar showing whose turn it is and game messages
      */
-
     private void buildStatusBar() {
         JPanel statusBar = new JPanel(new BorderLayout());
         statusBar.setBackground(new Color(35, 35, 35));
@@ -159,18 +150,18 @@ public class ChessGUI extends JFrame {
         statusLabel.setForeground(new Color(150, 150, 150));
         statusLabel.setFont(new Font("Georgia", Font.ITALIC, 12));
 
-        statusBar.add(turnLabel, BorderLayout.WEST);
+        statusBar.add(turnLabel,  BorderLayout.WEST);
         statusBar.add(statusLabel, BorderLayout.EAST);
         add(statusBar, BorderLayout.SOUTH);
     }
 
     /**
-     * Attempts to move a piece from one position to another
-     * Validates the move, updates the board and history, and checks for game-end conditions
+     * Attempts to move a piece from one position to another.
+     * Validates the move, handles pawn promotion, updates history,
+     * and checks for game-end conditions.
      * @param from Starting position
      * @param to   Ending position
      */
-
     public void attemptMove(Position from, Position to) {
         if (gameOver) return;
 
@@ -186,26 +177,35 @@ public class ChessGUI extends JFrame {
         // Save state for undo before making the move
         undoStack.push(new GameState(board, currentTurn));
 
-        Piece captured = board.getPiece(to);
+        Piece captured    = board.getPiece(to);
         boolean isCapture = captured != null;
-
-        // Check if capturing the king
         boolean kingCaptured = captured instanceof King;
 
         board.movePiece(from, to);
 
-        // Record in game history
-        String symbol = getUnicodeSymbol(moving);
+        // --- Pawn promotion ---
+        // Check if a pawn just reached the back rank
+        Piece movedPiece = board.getPiece(to);
+        if (movedPiece instanceof Pawn) {
+            int backRank = currentTurn.equals("white") ? 7 : 0;
+            if (to.getRow() == backRank) {
+                Piece promoted = askPromotion(currentTurn, to);
+                board.setPiece(to, promoted);
+                movedPiece = promoted;
+            }
+        }
+
+        // Record move in history
+        String symbol = getUnicodeSymbol(movedPiece);
         historyPanel.addMove(currentTurn, from.toNotation(), to.toNotation(), symbol, isCapture);
         historyPanel.updateCaptured(board.getCapturedPieces());
 
         if (kingCaptured) {
             boardPanel.repaint();
-            String winner = currentTurn.substring(0, 1).toUpperCase() + currentTurn.substring(1);
+            String winner = capitalize(currentTurn);
             JOptionPane.showMessageDialog(this,
                     winner + " captures the King!\n" + winner + " WINS!",
-                    "Game Over",
-                    JOptionPane.INFORMATION_MESSAGE);
+                    "Game Over", JOptionPane.INFORMATION_MESSAGE);
             gameOver = true;
             statusLabel.setText(winner + " wins!");
             turnLabel.setText("GAME OVER");
@@ -216,20 +216,18 @@ public class ChessGUI extends JFrame {
 
         if (board.isCheckmate(opponent)) {
             boardPanel.repaint();
-            String winner = currentTurn.substring(0, 1).toUpperCase() + currentTurn.substring(1);
+            String winner = capitalize(currentTurn);
             JOptionPane.showMessageDialog(this,
                     "CHECKMATE! " + winner + " wins!",
-                    "Game Over",
-                    JOptionPane.INFORMATION_MESSAGE);
+                    "Game Over", JOptionPane.INFORMATION_MESSAGE);
             gameOver = true;
             statusLabel.setText("Checkmate! " + winner + " wins!");
             turnLabel.setText("GAME OVER");
         } else if (board.isStalemate(opponent)) {
             boardPanel.repaint();
             JOptionPane.showMessageDialog(this,
-                    "STALEMATE! The game is a draw",
-                    "Game Over",
-                    JOptionPane.INFORMATION_MESSAGE);
+                    "STALEMATE! The game is a draw.",
+                    "Game Over", JOptionPane.INFORMATION_MESSAGE);
             gameOver = true;
             statusLabel.setText("Stalemate — draw!");
             turnLabel.setText("GAME OVER");
@@ -242,10 +240,36 @@ public class ChessGUI extends JFrame {
     }
 
     /**
-     * Undoes the last move by restoring the previous board state
-     * Implementation for the Undo button part of Feature 3
+     * Prompts the player to choose a promotion piece when a pawn reaches the back rank.
+     * Defaults to Queen if the dialog is dismissed.
+     * @param color  The color of the promoting pawn
+     * @param pos    The position on the back rank
+     * @return The chosen promotion piece
      */
+    private Piece askPromotion(String color, Position pos) {
+        String[] options = {"Queen", "Rook", "Bishop", "Knight"};
+        int choice = JOptionPane.showOptionDialog(
+                this,
+                "Pawn promotion! Choose a piece:",
+                "Pawn Promotion",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]
+        );
+        if (choice < 0) choice = 0; // default to Queen if dismissed
+        switch (choice) {
+            case 1: return new Rook(color, pos);
+            case 2: return new Bishop(color, pos);
+            case 3: return new Knight(color, pos);
+            default: return new Queen(color, pos);
+        }
+    }
 
+    /**
+     * Undoes the last move by restoring the previous board state
+     */
     private void undoMove() {
         if (undoStack.isEmpty()) {
             statusLabel.setText("Nothing to undo");
@@ -267,10 +291,9 @@ public class ChessGUI extends JFrame {
     /**
      * Starts a new game by resetting the board, turn, history, and undo stack
      */
-
     private void newGame() {
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Start a new game? Current progress will be lost",
+                "Start a new game? Current progress will be lost.",
                 "New Game", JOptionPane.YES_NO_OPTION);
         if (confirm != JOptionPane.YES_OPTION) return;
 
@@ -287,10 +310,8 @@ public class ChessGUI extends JFrame {
     }
 
     /**
-     * Saves the current game state to a file using Java serialization.
-     * Implementation for Feature 1's game saving
+     * Saves the current game state to a file using Java serialization
      */
-
     private void saveGame() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Save Game");
@@ -303,8 +324,7 @@ public class ChessGUI extends JFrame {
         }
 
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
-            GameState state = new GameState(board, currentTurn);
-            oos.writeObject(state);
+            oos.writeObject(new GameState(board, currentTurn));
             statusLabel.setText("Game saved to " + file.getName());
         } catch (IOException e) {
             JOptionPane.showMessageDialog(this, "Failed to save game: " + e.getMessage(),
@@ -314,9 +334,7 @@ public class ChessGUI extends JFrame {
 
     /**
      * Loads a previously saved game from a file
-     * Implementation for Feature 1's game loading
      */
-
     private void loadGame() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Load Game");
@@ -325,9 +343,9 @@ public class ChessGUI extends JFrame {
 
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(chooser.getSelectedFile()))) {
             GameState state = (GameState) ois.readObject();
-            board = state.restoreBoard();
+            board       = state.restoreBoard();
             currentTurn = state.getCurrentTurn();
-            gameOver = false;
+            gameOver    = false;
             undoStack.clear();
 
             boardPanel.setBoard(board);
@@ -344,21 +362,19 @@ public class ChessGUI extends JFrame {
 
     /**
      * Opens a dialog to customize board square colors
-     * Implementation for Feature 2's board color changing
      */
-
     private void openColorSettings() {
         JDialog dialog = new JDialog(this, "Board Colors", true);
         dialog.setLayout(new GridLayout(4, 1, 8, 8));
         dialog.getContentPane().setBackground(new Color(50, 50, 50));
-        ((JPanel)dialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+        ((JPanel) dialog.getContentPane()).setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
 
         JLabel title = new JLabel("Choose Board Colors");
         title.setForeground(Color.WHITE);
         title.setFont(new Font("Georgia", Font.BOLD, 13));
 
         final Color[] lightChoice = {new Color(240, 217, 181)};
-        final Color[] darkChoice = {new Color(181, 136, 99)};
+        final Color[] darkChoice  = {new Color(181, 136, 99)};
 
         JButton lightBtn = new JButton("Light Square Color");
         styleDialogButton(lightBtn);
@@ -394,9 +410,7 @@ public class ChessGUI extends JFrame {
 
     /**
      * Opens a dialog to change the board size (small/medium/large)
-     * Implementation for Feature 2's board size changing
      */
-
     private void openSizeSettings() {
         String[] options = {"Small (60px)", "Medium (80px)", "Large (100px)"};
         int choice = JOptionPane.showOptionDialog(this,
@@ -416,7 +430,6 @@ public class ChessGUI extends JFrame {
     /**
      * Applies consistent dark styling to a dialog button
      */
-
     private void styleDialogButton(JButton btn) {
         btn.setBackground(new Color(70, 70, 70));
         btn.setForeground(Color.WHITE);
@@ -425,10 +438,7 @@ public class ChessGUI extends JFrame {
         btn.setBorderPainted(false);
     }
 
-    /**
-     * Helper to create a styled JMenu
-     */
-
+    /** Helper to create a styled JMenu */
     private JMenu styledMenu(String text) {
         JMenu menu = new JMenu(text);
         menu.setForeground(new Color(200, 200, 200));
@@ -437,10 +447,7 @@ public class ChessGUI extends JFrame {
         return menu;
     }
 
-    /**
-     * Helper to create a styled JMenuItem
-     */
-
+    /** Helper to create a styled JMenuItem */
     private JMenuItem styledMenuItem(String text, String shortcut) {
         JMenuItem item = new JMenuItem(text);
         item.setForeground(new Color(210, 210, 210));
@@ -452,7 +459,6 @@ public class ChessGUI extends JFrame {
     /**
      * Updates the turn label and status bar to reflect the current game state
      */
-
     private void updateStatus() {
         if (currentTurn.equals("white")) {
             turnLabel.setText("⬜  WHITE'S TURN");
@@ -471,17 +477,15 @@ public class ChessGUI extends JFrame {
         }
     }
 
-    /**
-     * Returns the current player's turn color
-     * @return "white"/"black"
-     */
+    /** Capitalizes the first letter of a string */
+    private String capitalize(String s) {
+        return s.substring(0, 1).toUpperCase() + s.substring(1);
+    }
 
+    /** @return the current player's turn color */
     public String getCurrentTurn() { return currentTurn; }
 
-    /**
-     * Gets the Unicode symbol for a piece
-     */
-
+    /** Gets the Unicode symbol for a piece */
     private String getUnicodeSymbol(Piece piece) {
         boolean white = piece.getColor().equals("white");
         if (piece instanceof King)   return white ? "♔" : "♚";
